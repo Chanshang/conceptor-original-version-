@@ -1,0 +1,6 @@
+top coefficients: [309.317   307.91794 304.38422 304.1928  303.07623 302.5343  300.88596
+ 299.89868 299.31482 298.4276  298.24365 296.25348 292.1852  290.34012
+ 287.9264  285.28894 285.16394 284.4534  278.5302  278.50928]
+top tokens: snaps, moris, marci, posed, contr, centri, macfar, conve, anem, animated, �, stro, commissi, ா, mccor, mign, gior, suri, harmony, refer
+
+

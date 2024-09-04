@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="global" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+    <serverData>
+      <paths name="global">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/models/conceptor" local="$PROJECT_DIR$/../../PyCharm_Project/conceptor" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="pnp">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

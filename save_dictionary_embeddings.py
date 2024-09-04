@@ -53,7 +53,6 @@ def parse_args():
 
     return args
 
-
 def main():
     args = parse_args()
 
@@ -109,34 +108,32 @@ def main():
         # "a photo of a small {}",
     ]
 
+    exit()
+
     def get_embedding_for_prompt(prompt, templates):
         with torch.no_grad():
             texts = [
                 template.format(prompt) for template in templates  # 植入prompt
             ]  # format with class
-            text_preprocessed = processor(text=texts, return_tensors="pt", padding=True) # 用 CLIP 加工
+            text_preprocessed = processor(text=texts, return_tensors="pt", padding=True) # 用 CLIP 加工，padding填充
             text_encodings = model.get_text_features(
                 input_ids=text_preprocessed["input_ids"].cuda(),
-                attention_mask=text_preprocessed["attention_mask"].cuda(),
+                attention_mask=text_preprocessed["attention_mask"].cuda(), # 因为填充了所以要标记哪些部分是重要的
             )
             text_encodings /= text_encodings.norm(dim=-1, keepdim=True)
             text_encodings = text_encodings.mean(dim=0)  # 取了平均
             text_encodings /= text_encodings.norm()
             return text_encodings.float()
-
-        # 这个函数返回的是一个单一的嵌入向量，它的维度与单个文本嵌入向量的维度相同，而不会因为文本数量的增加而变大。这个向量代表了输入 prompt 在所有模板下的综合特征。
+    # 这个函数返回的是一个单一的嵌入向量，它的维度与单个文本嵌入向量的维度相同，而不会因为文本数量的增加而变大。这个向量代表了输入 prompt 在所有模板下的综合特征。
 
     top_encodings_open_clip = [
-        # token：整数
-        # decoder[token]：文本字符串
-        # pipe.tokenizer.decoder[token]：文本嵌入向量
+        # token：整数   decoder[token]：文本字符串   pipe.tokenizer.decoder[token]：文本嵌入向量
         get_embedding_for_prompt(pipe.tokenizer.decoder[token], imagenet_templates) for token in range(orig_embeddings.shape[0])
     ]
-
     top_encodings_open_clip = torch.stack(top_encodings_open_clip, dim=0)
-
-    # print(top_encodings_open_clip.shape)
+    print(top_encodings_open_clip.shape)
     # torch.Size([49408, 512])  !!!
+    # torch.Size([1000, 512])
 
     torch.save(top_encodings_open_clip, args.path_to_encoder_embeddings)
 

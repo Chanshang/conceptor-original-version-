@@ -20,8 +20,18 @@ import os
 import glob
 from pathlib import Path
 
-# 词表只保存一次
+import argparse
+# 创建 ArgumentParser 对象
+parser = argparse.ArgumentParser(description='Process some parameters.')
+# 添加参数
+parser.add_argument('--name', type=str, help="president", default="christmas-tree-test")
+# 解析命令行参数
+args = parser.parse_args()
+# 使用传递的参数
+print(f"The value of name is: {args.name}")
 
+
+# 词表只保存一次
 # initialize stable diffusion pipeline
 pipe = StableDiffusionPipeline.from_pretrained("../stable-diffusion-2-1")
 pipe.to("cuda")
@@ -33,58 +43,39 @@ orig_embeddings = (
 pipe.text_encoder.text_model.embeddings.token_embedding.weight.requires_grad_(False)
 
 
-concept = "sadness"
+concept = "amusement"
 folder = "./emotion"
-name = "amusement-best_alphas-wiout-prompt"
 
-file_path = f"{folder}/{name}.pt"
-
-# 检查文件是否存在
-if not os.path.isfile(file_path):
-    print(f"File {file_path} does not exist.")
-else:
-    # 尝试加载文件
-    try:
-        alphas_dict = torch.load(file_path)
-
-        # 检查加载的内容是否为None
-        if alphas_dict is None:
-            print(f"The content of {file_path} is None.")  # 加载为空报错
-        else:
-            # 确保内容是张量，然后调用 detach_()
-            if isinstance(alphas_dict, torch.Tensor):
-                alphas_dict = alphas_dict.detach_().requires_grad_(False)
-            else:
-                print(f"The content of {file_path} is not a torch.Tensor.")
-
-    except Exception as e:
-        print(f"An error occurred while loading {file_path}: {e}")
+file_path = f"{folder}/{args.name}.pt"
 
 # load coefficients  参数
 alphas_dict = torch.load(file_path).detach_().requires_grad_(False)
-
 # load vocabulary  词表
-dictionary = torch.load(f"{folder}/dictionary.pt")
+dictionary = torch.load("./dictionary.pt")
 
 # 排序
 sorted_alphas, sorted_indices = torch.sort(alphas_dict, descending=True)
 
-num_indices = 20
+num_indices = 50
 top_indices_orig_dict = [dictionary[i] for i in sorted_indices[:num_indices]]
 print("top coefficients: ", sorted_alphas[:num_indices].cpu().numpy())
 alpha_ids = [pipe.tokenizer.decode(idx) for idx in top_indices_orig_dict]
 print("top tokens: ", alpha_ids)
 
-
 # 打开文件，准备写入, open 会自动创建 文件，若已存在则清空
 top_alphas = sorted_alphas[:num_indices].cpu().numpy()
-txt_position = f"{folder}/{name}.txt"
+txt_position = f"{folder}/{args.name}.txt"
+
 with open(txt_position, 'w') as file:
     # 写入 top coefficients
     file.write("top coefficients: " + str(top_alphas) + '\n')
     # 写入 top tokens
-    file.write("top tokens: " + ', '.join(alpha_ids) + '\n')
-
+    file.write("top tokens:  ")
+    for i, token in enumerate(alpha_ids):
+        if (i + 1) % 10 == 0:
+            file.write(f"{token}\n")  # 在每十个元素后换行
+        else:
+            file.write(f"{token}  ")  # 在同一行打印元素，以空格分隔
 
 num_tokens = 50
 alphas = torch.zeros(orig_embeddings.shape[0]).cuda()
@@ -113,7 +104,6 @@ learned_embedding *= avg_norm
 # add w^* to vocabulary
 token_embeds[placeholder_token_id] = torch.nn.Parameter(learned_embedding)
 
-
 import math
 
 def get_image_grid(images) -> Image:
@@ -140,7 +130,7 @@ image = pipe(
     num_inference_steps=50,
 )
 im = get_image_grid(image[0])
-output_path = f'./Save_Images/{name}.jpg'
+output_path = f'./Save_Images/{args.name}.jpg'
 # 保存图片
 im.save(output_path)
 

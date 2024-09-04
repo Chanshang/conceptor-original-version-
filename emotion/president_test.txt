@@ -1,0 +1,10 @@
+top coefficients: [0.07639635 0.074918   0.07476006 0.0743962  0.07432054 0.07431699
+ 0.073998   0.07370542 0.0735395  0.07331268 0.07294431 0.07275825
+ 0.07265444 0.07251579 0.0724879  0.07237513 0.07229818 0.07228851
+ 0.07214401 0.07210159 0.07200475 0.07198109 0.07185043 0.07174516
+ 0.07167532 0.07167409 0.0716608  0.0715878  0.07154596 0.07152517]
+top tokens: cole, allen, jackson, lewis, churchill, campbell, sidney, evans, caldwell, william, nelson, fowler,
+vaughan, holt, mansfield, biden, phillips, woodward, whitehouse, bartlett, mason, fulton, hayes, spencer, wolfe,
+arnold, george, addison, watson, morris
+
+

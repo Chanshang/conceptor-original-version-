@@ -56,8 +56,8 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from transformers import CLIPTextModel, CLIPTokenizer, CLIPModel, CLIPProcessor
 
 # python代码中添加
-os.environ["NCCL_P2P_DISABLE"] = "1"
-os.environ["NCCL_IB_DISABLE"] = "1"
+# os.environ["NCCL_P2P_DISABLE"] = "1"
+# os.environ["NCCL_IB_DISABLE"] = "1"
 #神，预设置环境
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -78,9 +78,7 @@ else:
     }
 # ------------------------------------------------------------------------------
 
-
 logger = get_logger(__name__)
-
 
 def parse_args():
     """Parses command line arguments."""
@@ -111,7 +109,7 @@ def parse_args():
     )
     parser.add_argument("--concept",type=str,default="emotion",required=False,
         help="The concept to explain.",
-    )
+    ) # requierd 表明这个参数是否必须
     parser.add_argument("--repeats",type=int,default=100,
         help="How many times to repeat the training data.", # 重复
     )
@@ -132,9 +130,9 @@ def parse_args():
     parser.add_argument("--center_crop",action="store_true",
         help="Whether to center crop images before resizing to resolution.",
     )
-    parser.add_argument("--remove_concept_tokens",action="store_true",default=True,
+    parser.add_argument("--remove_concept_tokens",action="store_true",default=False,
         help="Whether to remove the concept token from the dictionary.", # 第一步筛选词表时，是否去除相似概念
-    )
+    )# action="store_true" 命令行有这个名字就 True， 否则 False
     parser.add_argument( "--train_batch_size",type=int,default=10,
         help="Batch size (per device) for the training dataloader.", # 批次大小, 只能一批训！！！
     )
@@ -145,7 +143,7 @@ def parse_args():
             " num_train_epochs."
         ),
     )
-    parser.add_argument("--dictionary_size",type=int,default=5000,help="Number of top tokens to consider as dictionary.",)# 词典大小
+    parser.add_argument("--dictionary_size",type=int,default=500,help="Number of top tokens to consider as dictionary.",)# 词典大小
     parser.add_argument("--num_explanation_tokens",type=int,default=50,
         help="Number of words to produce as explanation.", # top_tokens
     )
@@ -154,7 +152,8 @@ def parse_args():
             "Number of updates steps to accumulate before performing a"
             " backward/update pass."
         ),
-    )
+    )# 意味着在执行一次参数更新之前，模型将进行 X 次前向和反向传播，并将这些批次的梯度相加以累积。只有当累积了足够的梯度步骤后，才会执行参数更新。
+
     parser.add_argument("--gradient_checkpointing",action="store_true",
         help=(
             "Whether or not to use gradient checkpointing to save memory at the"
@@ -239,8 +238,14 @@ def parse_args():
             " `args.num_validation_images` and logging the images."
         ), # 多少轮生成一次
     )
-    parser.add_argument(
+    parser.add_argument(  # 两个预处理张量位置
         "--path_to_encoder_embeddings",type=str,default="./clip_text_encoding.pt",
+        help="Path to the saved embeddings matrix of the text encoder",
+    )
+    parser.add_argument(
+        "--path_to_vocabulary_embedding",
+        type=str,
+        default="./imagenet1000_vocabulary_embedding.pt",
         help="Path to the saved embeddings matrix of the text encoder",
     )
     parser.add_argument("--local_rank",type=int,default=-1,
@@ -290,8 +295,6 @@ class ConceptDataset(Dataset):  # 定义一个概念数据集类，继承自torc
         self.image_paths = [
             os.path.join(self.data_root, dir_path)
             for dir_path in os.listdir(self.data_root)
-            # if os.path.isdir(os.path.join(self.data_root, dir_path))  # 确保是目录
-            # for file_path in os.listdir(os.path.join(self.data_root, dir_path))
         ]
         # ./train_by_emotion/amusement ...
 
@@ -323,12 +326,13 @@ class ConceptDataset(Dataset):  # 定义一个概念数据集类，继承自torc
     def __getitem__(self, i):
         example = {}  # 创建一个空字典来存储样本数据
 
-        prompt_text = self.image_paths[i % self.num_images].split('/')[-2]
+        # prompt_text = self.image_paths[i % self.num_images].split('/')[-2]
         # print(prompt_text)
 
         placeholder_string = self.placeholder_token # 创建一个占位符字符串
         text = random.choice(self.templates).format(placeholder_string)  # 随机选择一个文本模板并格式化
-        prompt_text = random.choice(self.templates).format(prompt_text)
+
+        # prompt_text = random.choice(self.templates).format(prompt_text)
 
         image = Image.open(self.image_paths[i % self.num_images])  # 打开一个图像文件
 
@@ -345,13 +349,13 @@ class ConceptDataset(Dataset):  # 定义一个概念数据集类，继承自torc
             return_tensors="pt",
         ).input_ids[0]
 
-        prompt_embedding = self.tokenizer(
-            prompt_text,
-            padding="max_length",
-            truncation=True,
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        ).input_ids[0]
+        # prompt_embedding = self.tokenizer(
+        #     prompt_text,
+        #     padding="max_length",
+        #     truncation=True,
+        #     max_length=self.tokenizer.model_max_length,
+        #     return_tensors="pt",
+        # ).input_ids[0]
 
         # 图像预处理
         img = np.array(image).astype(np.uint8)
@@ -375,7 +379,7 @@ class ConceptDataset(Dataset):  # 定义一个概念数据集类，继承自torc
         # 将图像转换为PyTorch张量，并调整其维度
         example["pixel_values"] = torch.from_numpy(image).permute(2, 0, 1)
         # 返回包含输入ID和像素值的样本, 以及 prompt 嵌入
-        return example, prompt_embedding
+        return example
 
 
 def get_clip_encodings(data_root):
@@ -428,6 +432,7 @@ def get_clip_encodings(data_root):
     target_image_encodings = clip_model.get_image_features(images_processed_sum)
 
     target_image_encodings /= target_image_encodings.norm(dim=-1, keepdim=True)
+
     del clip_model
     torch.cuda.empty_cache()
 
@@ -474,7 +479,6 @@ def get_dictionary_indices(args, target_image_encodings, tokenizer, dictionary_s
 
     # 代码返回排序后相似度最高的前dictionary_size个词汇的索引。这些索引代表了与目标图像最相关的词汇，可以用于构建一个词典。
     return sorted_indices[:dictionary_size]    # 返回指定词典大小的部分
-
 
 # 这是因为CLIP的文本编码器通常设计为将整个句子映射到一个单一的嵌入向量，而不是为句子中的每个单词分别提供嵌入。
 # 因此，即使输入是形状为 [B, N, D] 的多个句子，输出也将是一个形状为 [B, D_CLIP] 的张量，其中每个条目都是对应输入句子的嵌入表示。
@@ -552,7 +556,7 @@ class CrossAttentionBlock(nn.Module):
         vec = self.mlp(vec)
         return vec
 
-class Net(nn.Module):  # MLP网络，输入是 [5000, 1024]
+class Net(nn.Module):  # MLP网络，输入是 [5000, 1024]/[1000, 512]
     # 每个token的维度为 1024
 
     def __init__(self, num_tokens, batch_size):
@@ -572,7 +576,6 @@ class Net(nn.Module):  # MLP网络，输入是 [5000, 1024]
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x.flatten().abs()
-
 
 # 根据一个prompt生成多张图片
 def generate_sd_images(pipe, prompt, output_path, num_images_per_prompt, epochs, seed, batch):
@@ -597,10 +600,9 @@ def generate_sd_images(pipe, prompt, output_path, num_images_per_prompt, epochs,
             num_images_per_prompt=num_images_per_prompt, # 就是Batch size
         ).images
         for i, image in enumerate(images):
-            image.save(f"{output_path}/{epoch * batch + i}.png")  # * 6 + i 跟 batch 数相关
+            image.save(f"{output_path}/{epoch * batch + i}.png")
 
         torch.cuda.empty_cache()  # 清空GPU显存，不然得爆显存
-
 
 def generate_images_if_needed(train_data_dir, validation_data_dir, pretrained_model_name_or_path, prompt, num_validation_images, seed, validation_seed):
     # 如果已经传入图片则不用生成
@@ -617,20 +619,20 @@ def generate_images_if_needed(train_data_dir, validation_data_dir, pretrained_mo
 
     if not os.path.exists(train_data_dir): # 如果路径不存在
         generate_sd_images(
-            pipe, prompt, train_data_dir, batch_size, 100 // batch_size, seed, batch_size,
+            pipe, prompt, train_data_dir, batch_size, 50 // batch_size, seed, batch_size,
         )
         # 训练图片默认一百张
 
-    if not os.path.exists(validation_data_dir):
-        generate_sd_images(
-            pipe,
-            prompt,
-            validation_data_dir,
-            batch_size,
-            num_validation_images // batch_size,
-            validation_seed,
-            batch_size,
-        )
+    # if not os.path.exists(validation_data_dir):
+    #     generate_sd_images(
+    #         pipe,
+    #         prompt,
+    #         validation_data_dir,
+    #         batch_size,
+    #         num_validation_images // batch_size,
+    #         validation_seed,
+    #         batch_size,
+    #     )
         # 验证 20 张
 
     del pipe
@@ -684,7 +686,7 @@ def main():
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Load tokenizer
-    tokenizer = CLIPTokenizer.from_pretrained(
+    tokenizer = CLIPTokenizer.from_pretrained( # SD-2.1的CLIP
         args.pretrained_model_name_or_path, subfolder="tokenizer"
     )
 
@@ -786,21 +788,12 @@ def main():
         num_workers=args.dataloader_num_workers,
     )
 
-    # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps
-    )
-    if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
-
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
-    )
+        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps, # gradient_accumulation_steps ???
+    )# 这段代码是为了确保在使用梯度累积的情况下，学习率调度器仍然能够正确地按照训练的实际情况来调整学习率。
 
     # Prepare everything with our `accelerator`.
     text_encoder, optimizer, train_dataloader, lr_scheduler, net = accelerator.prepare(
@@ -822,10 +815,6 @@ def main():
     num_update_steps_per_epoch = math.ceil(
         len(train_dataloader) / args.gradient_accumulation_steps
     )
-    if overrode_max_train_steps:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-    # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -852,6 +841,10 @@ def main():
     global_step = 0
     first_epoch = 0
 
+    print("我理解")
+    print(args.max_train_steps)
+    print("为什么")
+
     # Only show the progress bar once on each machine.    第一个进度条
     progress_bar = tqdm(
         range(global_step, args.max_train_steps),
@@ -861,16 +854,16 @@ def main():
     progress_bar.set_description("Steps")
 
     # keep original embeddings as reference
+    # 这段代码的目的是为了在训练过程中保留 text_encoder 模型的原始输入嵌入层权重作为参考。因为之后要替换
     orig_embeds_params = (
         accelerator.unwrap_model(text_encoder)
         .get_input_embeddings()
         .weight.data.clone()
     )
-
     norms = [i.norm().item() for i in orig_embeds_params]
     avg_norm = np.mean(norms)
-    text_encoder.module.get_input_embeddings().weight.requires_grad_(False)
 
+    text_encoder.module.get_input_embeddings().weight.requires_grad_(False)
 
     # get dictionary     得到词表转化成的向量
     # 第一步先和图片尽可能匹配，找最近似的词表中的内容
@@ -883,16 +876,22 @@ def main():
     )
 
     print("saving dictionary")
-    torch.save(dictionary_indices, f"{args.output_dir}/dictionary.pt") # 保存下标
+    torch.save(dictionary_indices, f"./dictionary.pt") # 保存下标
 
     target_image_encodings.detach_().requires_grad_(False)
     # validation_image_encodings.detach_().requires_grad_(False)
+
     dictionary = orig_embeds_params[dictionary_indices]  # 从原始 SD模型 embedding 中获得下标指定的部分的词表，但是是向量形式
+    print(dictionary.shape)
+    # print("\n!!!!!!!!!!!!!!")
+    # print(dictionary.shape)
+    # print("\n!!!!!!!")
 
     all_words = [
         tokenizer.decode(dictionary_indices[i]) for i in range(args.dictionary_size)
     ]
-    txt_position = f"./vocabulary/{args.train_data_dir.split('/')[-1]}-{train_dataset.__len__()}.txt"
+
+    txt_position = f"./vocabulary/{args.train_data_dir.split('/')[-1]}-{train_dataset.__len__()}-{args.name}.txt"
 
     with open(txt_position, 'w') as file:
         # 每10个单词一组
@@ -931,19 +930,13 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         net.train()
-        for batch, prompt_embedding in tqdm(train_dataloader):
+
+        print(f"\nThere is epoch {epoch} now!!!\n")
+
+        for batch in train_dataloader:
             text_encoder.module.get_input_embeddings().weight.detach_().requires_grad_(False)
             token_embeds = text_encoder.module.get_input_embeddings().weight
             # 这部分代码将文本编码器的输入嵌入层的权重矩阵赋值给变量token_embeds操作，token_embeds现在是一个不可训练的权重矩阵，用于固定嵌入层。
-
-            # print("\n!!!!!!!!!!!!!!      ")
-            # print(dictionary.shape)
-            # print("\n!!!!!!!")
-            # torch.Size([5000, 1024])
-
-            # print("\n  prompt !!!!!!!!!!!!!!      ")
-            # print(prompt_embedding.shape)
-            # print("\n!!!!!!!")
 
             alphas = net(dictionary) # 得到参数  [Batch]  的数值, 学习出来的权重
 
@@ -1166,7 +1159,7 @@ def main():
         f"saving best alphas from validation step {best_epoch}, words = ",
         best_words,
     )
-    torch.save(best_alphas, f"{args.output_dir}/{args.train_data_dir.split('/')[-1]}-{train_dataset.__len__()}-best_alphas-{args.name}.pt")
+    torch.save(best_alphas, f"{args.output_dir}/{args.name}.pt")
 
     #torch.save(net.state_dict(), "./model_weights.pth")
     #print("saving the model weights!")
